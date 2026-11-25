@@ -6,7 +6,6 @@ uci set system.@system[0].zonename='Asia/Jakarta'
 uci set system.@system[0].timezone='WIB-7'
 
 # 2. LAN Network config (Segment 77)
-uci set network.lan.ifname='eth0'
 uci set network.lan.proto='static'
 uci set network.lan.ipaddr='192.168.77.1'
 uci set network.lan.netmask='255.255.255.0'

@@ -1,4 +1,4 @@
-name: Build PHANTOM-77 (OpenWrt 23.05 Latest Kernel 5.15)
+name: Build PHANTOM-77 (OpenWrt 25.12 Latest Kernel 6.12)
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    name: Compile OpenWrt 23.05 from Source
+    name: Compile OpenWrt 25.12 from Source
     runs-on: ubuntu-22.04
 
     steps:
@@ -26,9 +26,9 @@ jobs:
             sudo ln -sf $(which python3) /usr/bin/python
           fi
 
-      - name: Clone OpenWrt 23.05 (Latest Stable LTS Branch)
+      - name: Clone OpenWrt 25.12 (Current Stable LTS Branch)
         run: |
-          git clone --depth 1 -b openwrt-23.05 https://github.com/openwrt/openwrt.git openwrt
+          git clone --depth 1 -b openwrt-25.12 https://github.com/openwrt/openwrt.git openwrt
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
@@ -57,7 +57,7 @@ jobs:
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
-      - name: Compile Toolchain, Linux Kernel 5.15, and Rootfs
+      - name: Compile Toolchain, Linux Kernel 6.12, and Rootfs
         run: |
           cd openwrt
           make -j$(nproc) || make -j1 V=s
@@ -77,6 +77,6 @@ jobs:
       - name: Upload Firmware Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: PHANTOM-77-Latest-Kernel-5.15
+          name: PHANTOM-77-Latest-Kernel-6.12
           path: output/*
           retention-days: 14
