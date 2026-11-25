@@ -1,4 +1,4 @@
-name: Build PHANTOM-77 Firmware
+name: Build PHANTOM-77 from Source (From Scratch)
 
 on:
   push:
@@ -7,57 +7,87 @@ on:
 
 jobs:
   build:
-    name: Build OpenWrt for PHANTOM-77
+    name: Compile OpenWrt from Source Code
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Build Dependencies
+      - name: Free Disk Space & Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential gcc g++ libncurses5-dev libncursesw5-dev \
-            zlib1g-dev gawk git gettext libssl-dev xsltproc wget unzip python3 python2 || true
-          # Ensure python command exists
+          sudo apt-get install -y build-essential ccache ecj fastjar file g++ gawk \
+            gettext git java-propose-classpath libelf-dev libncurses5-dev \
+            libncursesw5-dev libssl-dev python3 unzip wget \
+            python3-distutils python3-setuptools rsync subversion swig time \
+            xsltproc zlib1g-dev || true
+          # Compatibility symlinks
           if ! command -v python &> /dev/null; then
             sudo ln -sf $(which python3) /usr/bin/python
           fi
-          if ! command -v python2 &> /dev/null; then
-            sudo ln -sf $(which python3) /usr/bin/python2
-          fi
 
-      - name: Download & Extract OpenWrt Image Builder
+      - name: Clone OpenWrt Source Tree (18.06 Branch)
         run: |
-          wget -q https://archive.openwrt.org/releases/18.06.9/targets/ramips/rt305x/openwrt-imagebuilder-18.06.9-ramips-rt305x.Linux-x86_64.tar.xz
-          tar -xf openwrt-imagebuilder-18.06.9-ramips-rt305x.Linux-x86_64.tar.xz
-          mv openwrt-imagebuilder-18.06.9-ramips-rt305x.Linux-x86_64 ib
-          mkdir -p ib/files
+          git clone --depth 1 -b openwrt-18.06 https://github.com/openwrt/openwrt.git openwrt
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-      - name: Inject Custom Configurations
+      - name: Configure Target Architecture & Hardware Profile
         run: |
-          cp -r files/* ib/files/
-          chmod +x ib/files/etc/uci-defaults/*
+          cd openwrt
+          cat << 'EOF' > .config
+          CONFIG_TARGET_ramips=y
+          CONFIG_TARGET_ramips_rt305x=y
+          CONFIG_TARGET_ramips_rt305x_DEVICE_3g150b=y
+          CONFIG_TARGET_BOARD="ramips"
+          CONFIG_TARGET_SUBTARGET="rt305x"
+          CONFIG_TARGET_PROFILE="DEVICE_3g150b"
+          CONFIG_PACKAGE_luci=y
+          CONFIG_PACKAGE_luci-mod-admin-full=y
+          CONFIG_PACKAGE_luci-theme-bootstrap=y
+          # Stripping unused packages to maximize 4MB flash storage
+          # CONFIG_PACKAGE_ppp is not set
+          # CONFIG_PACKAGE_ppp-mod-pppoe is not set
+          # CONFIG_PACKAGE_kmod-ppp is not set
+          # CONFIG_PACKAGE_kmod-pppoe is not set
+          # CONFIG_PACKAGE_ip6tables is not set
+          # CONFIG_PACKAGE_odhcp6c is not set
+          # CONFIG_IPV6 is not set
+          EOF
+          make defconfig
 
-      - name: Compile Custom Firmware
+      - name: Inject Custom Configurations & Branding
         run: |
-          cd ib
-          make image FORCE=1 PROFILE=3g150b \
-            PACKAGES="luci -ppp -ppp-mod-pppoe -kmod-ppp -kmod-pppoe -ip6tables -odhcp6c -kmod-ipv6" \
-            FILES="files"
+          mkdir -p openwrt/files
+          cp -r files/* openwrt/files/
+          chmod +x openwrt/files/etc/uci-defaults/*
+
+      - name: Download Source Tarballs (dl)
+        run: |
+          cd openwrt
+          make download -j$(nproc)
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Compile Cross-Compiler Toolchain, Linux Kernel, and Rootfs
+        run: |
+          cd openwrt
+          make -j$(nproc) || make -j1 V=s
 
       - name: Package Firmware Outputs
         run: |
           mkdir -p output
-          SYSUPGRADE=$(ls ib/bin/targets/ramips/rt305x/*3g150b-squashfs-sysupgrade.bin | head -n 1)
+          SYSUPGRADE=$(ls openwrt/bin/targets/ramips/rt305x/*3g150b-squashfs-sysupgrade.bin | head -n 1)
           cp "$SYSUPGRADE" output/Kernal.bin
           cp "$SYSUPGRADE" output/phantom-77-sysupgrade.bin
           echo "Build finished successfully:"
           ls -lh output/
 
-      - name: Upload Firmware to Artifacts
+      - name: Upload Firmware Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: PHANTOM-77-Firmware
+          name: PHANTOM-77-Source-Firmware
           path: output/*
           retention-days: 14
