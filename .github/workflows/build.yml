@@ -1,0 +1,56 @@
+name: Build PHANTOM-77 Firmware
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build OpenWrt for PHANTOM-77
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev \
+            zlib1g-dev gawk git gettext libssl-dev xsltproc wget unzip python3
+
+      - name: Download & Extract OpenWrt Image Builder
+        run: |
+          wget -q https://archive.openwrt.org/releases/18.06.9/targets/ramips/rt305x/openwrt-imagebuilder-18.06.9-ramips-rt305x.Linux-x86_64.tar.xz
+          tar -xf openwrt-imagebuilder-18.06.9-ramips-rt305x.Linux-x86_64.tar.xz
+          mv openwrt-imagebuilder-18.06.9-ramips-rt305x.Linux-x86_64 ib
+          mkdir -p ib/files
+
+      - name: Inject Custom Configurations
+        run: |
+          cp -r files/* ib/files/
+          chmod +x ib/files/etc/uci-defaults/*
+
+      - name: Compile Custom Firmware
+        run: |
+          cd ib
+          make image PROFILE=3g150b \
+            PACKAGES="luci -ppp -ppp-mod-pppoe -kmod-ppp -kmod-pppoe -ip6tables -odhcp6c -kmod-ipv6" \
+            FILES="files"
+
+      - name: Package Firmware Outputs
+        run: |
+          mkdir -p output
+          SYSUPGRADE=$(ls ib/bin/targets/ramips/rt305x/*3g150b-squashfs-sysupgrade.bin | head -n 1)
+          cp "$SYSUPGRADE" output/Kernal.bin
+          cp "$SYSUPGRADE" output/phantom-77-sysupgrade.bin
+          echo "Build finished successfully:"
+          ls -lh output/
+
+      - name: Upload Firmware to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PHANTOM-77-Firmware
+          path: output/*
+          retention-days: 14
