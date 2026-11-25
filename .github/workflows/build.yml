@@ -1,4 +1,4 @@
-name: Build PHANTOM-77 from Source (From Scratch)
+name: Build PHANTOM-77 (OpenWrt 23.05 Latest Kernel 5.15)
 
 on:
   push:
@@ -7,14 +7,14 @@ on:
 
 jobs:
   build:
-    name: Compile OpenWrt from Source Code
+    name: Compile OpenWrt 23.05 from Source
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Free Disk Space & Install Build Dependencies
+      - name: Install Build Dependencies & Toolchain Prerequisites
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential ccache ecj fastjar file g++ gawk \
@@ -22,32 +22,49 @@ jobs:
             libncursesw5-dev libssl-dev python3 unzip wget \
             python3-distutils python3-setuptools rsync subversion swig time \
             xsltproc zlib1g-dev || true
-          # Compatibility symlinks
           if ! command -v python &> /dev/null; then
             sudo ln -sf $(which python3) /usr/bin/python
           fi
 
-      - name: Clone OpenWrt Source Tree (18.06 Branch)
+      - name: Clone OpenWrt 23.05 (Latest Stable LTS Branch)
         run: |
-          git clone --depth 1 -b openwrt-18.06 https://github.com/openwrt/openwrt.git openwrt
+          git clone --depth 1 -b openwrt-23.05 https://github.com/openwrt/openwrt.git openwrt
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure Target Architecture & Hardware Profile
+      - name: Register PHANTOM-77 Device Tree & Board Definition
+        run: |
+          # 1. Copy Device Tree
+          mkdir -p openwrt/target/linux/ramips/dts/rt305x/
+          cp phantom-77.dts openwrt/target/linux/ramips/dts/rt305x/phantom-77.dts || true
+          cp phantom-77.dts openwrt/target/linux/ramips/dts/phantom-77.dts || true
+
+          # 2. Append Device definition to rt305x.mk
+          cat << 'EOF' >> openwrt/target/linux/ramips/image/rt305x.mk
+
+define Device/phantom-77
+  SOC := rt5350
+  IMAGE_SIZE := 3776k
+  DEVICE_VENDOR := PHANTOM
+  DEVICE_MODEL := 77
+  DEVICE_PACKAGES := kmod-rt2800-soc
+endef
+TARGET_DEVICES += phantom-77
+EOF
+
+      - name: Configure Minimalist Linux (.config)
         run: |
           cd openwrt
           cat << 'EOF' > .config
           CONFIG_TARGET_ramips=y
           CONFIG_TARGET_ramips_rt305x=y
-          CONFIG_TARGET_ramips_rt305x_DEVICE_3g150b=y
+          CONFIG_TARGET_ramips_rt305x_DEVICE_phantom-77=y
           CONFIG_TARGET_BOARD="ramips"
           CONFIG_TARGET_SUBTARGET="rt305x"
-          CONFIG_TARGET_PROFILE="DEVICE_3g150b"
-          CONFIG_PACKAGE_luci=y
-          CONFIG_PACKAGE_luci-mod-admin-full=y
-          CONFIG_PACKAGE_luci-theme-bootstrap=y
-          # Stripping unused packages to maximize 4MB flash storage
+          CONFIG_TARGET_PROFILE="DEVICE_phantom-77"
+          # Pure Minimalist Linux (No LuCI/PPP bloat) to fit in 4MB
+          # CONFIG_PACKAGE_luci is not set
           # CONFIG_PACKAGE_ppp is not set
           # CONFIG_PACKAGE_ppp-mod-pppoe is not set
           # CONFIG_PACKAGE_kmod-ppp is not set
@@ -58,7 +75,7 @@ jobs:
           EOF
           make defconfig
 
-      - name: Inject Custom Configurations & Branding
+      - name: Inject Custom Configurations & Branding (files/)
         run: |
           mkdir -p openwrt/files
           cp -r files/* openwrt/files/
@@ -71,7 +88,7 @@ jobs:
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
-      - name: Compile Cross-Compiler Toolchain, Linux Kernel, and Rootfs
+      - name: Compile Toolchain, Linux Kernel 5.15, and Rootfs
         run: |
           cd openwrt
           make -j$(nproc) || make -j1 V=s
@@ -79,15 +96,18 @@ jobs:
       - name: Package Firmware Outputs
         run: |
           mkdir -p output
-          SYSUPGRADE=$(ls openwrt/bin/targets/ramips/rt305x/*3g150b-squashfs-sysupgrade.bin | head -n 1)
+          SYSUPGRADE=$(find openwrt/bin/targets/ramips/rt305x/ -name "*phantom-77*sysupgrade.bin" | head -n 1)
+          if [ -z "$SYSUPGRADE" ]; then
+            SYSUPGRADE=$(find openwrt/bin/targets/ramips/rt305x/ -name "*sysupgrade.bin" | head -n 1)
+          fi
           cp "$SYSUPGRADE" output/Kernal.bin
-          cp "$SYSUPGRADE" output/phantom-77-sysupgrade.bin
+          cp "$SYSUPGRADE" output/phantom-77-latest-sysupgrade.bin
           echo "Build finished successfully:"
           ls -lh output/
 
       - name: Upload Firmware Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: PHANTOM-77-Source-Firmware
+          name: PHANTOM-77-Latest-Kernel-5.15
           path: output/*
           retention-days: 14
