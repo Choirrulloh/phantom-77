@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     name: Build OpenWrt for PHANTOM-77
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout Repository
@@ -17,8 +17,15 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev \
-            zlib1g-dev gawk git gettext libssl-dev xsltproc wget unzip python3
+          sudo apt-get install -y build-essential gcc g++ libncurses5-dev libncursesw5-dev \
+            zlib1g-dev gawk git gettext libssl-dev xsltproc wget unzip python3 python2 || true
+          # Ensure python command exists
+          if ! command -v python &> /dev/null; then
+            sudo ln -sf $(which python3) /usr/bin/python
+          fi
+          if ! command -v python2 &> /dev/null; then
+            sudo ln -sf $(which python3) /usr/bin/python2
+          fi
 
       - name: Download & Extract OpenWrt Image Builder
         run: |
@@ -35,7 +42,7 @@ jobs:
       - name: Compile Custom Firmware
         run: |
           cd ib
-          make image PROFILE=3g150b \
+          make image FORCE=1 PROFILE=3g150b \
             PACKAGES="luci -ppp -ppp-mod-pppoe -kmod-ppp -kmod-pppoe -ip6tables -odhcp6c -kmod-ipv6" \
             FILES="files"
 
