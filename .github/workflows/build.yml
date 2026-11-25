@@ -43,6 +43,8 @@ jobs:
           cp phantom-77.config openwrt/.config
           cd openwrt
           make defconfig
+          echo "=== Verified Device Profiles in .config ==="
+          grep -i "CONFIG_TARGET_DEVICE_ramips_rt305x" .config || true
 
       - name: Inject Custom Configurations & Branding (files/)
         run: |
@@ -65,13 +67,41 @@ jobs:
       - name: Package Firmware Outputs
         run: |
           mkdir -p output
-          SYSUPGRADE=$(find openwrt/bin/targets/ramips/rt305x/ -name "*phantom-77*sysupgrade.bin" | head -n 1)
+          echo "=== All files in openwrt/bin/targets/ramips/rt305x/ ==="
+          ls -la openwrt/bin/targets/ramips/rt305x/ || true
+          
+          echo "=== All .bin files across openwrt/bin/ ==="
+          find openwrt/bin/ -type f -name "*.bin" || true
+          
+          # Priority 1: phantom-77 sysupgrade
+          SYSUPGRADE=$(find openwrt/bin/targets/ramips/rt305x/ -type f -name "*phantom*sysupgrade.bin" | head -n 1)
+          
+          # Priority 2: 3g150b sysupgrade
           if [ -z "$SYSUPGRADE" ]; then
-            SYSUPGRADE=$(find openwrt/bin/targets/ramips/rt305x/ -name "*sysupgrade.bin" | head -n 1)
+            SYSUPGRADE=$(find openwrt/bin/targets/ramips/rt305x/ -type f -name "*3g150b*sysupgrade.bin" | head -n 1)
           fi
-          cp "$SYSUPGRADE" output/Kernal.bin
-          cp "$SYSUPGRADE" output/phantom-77-latest-sysupgrade.bin
-          echo "Build finished successfully:"
+          
+          # Priority 3: any sysupgrade.bin
+          if [ -z "$SYSUPGRADE" ]; then
+            SYSUPGRADE=$(find openwrt/bin/targets/ramips/rt305x/ -type f -name "*sysupgrade.bin" | head -n 1)
+          fi
+          
+          # Priority 4: any .bin in rt305x
+          if [ -z "$SYSUPGRADE" ]; then
+            SYSUPGRADE=$(find openwrt/bin/targets/ramips/rt305x/ -type f -name "*.bin" | head -n 1)
+          fi
+          
+          if [ -n "$SYSUPGRADE" ]; then
+            echo "Selected firmware image: $SYSUPGRADE"
+            cp "$SYSUPGRADE" output/Kernal.bin
+            cp "$SYSUPGRADE" output/phantom-77-latest-sysupgrade.bin
+            cp openwrt/bin/targets/ramips/rt305x/*.bin output/ 2>/dev/null || true
+          else
+            echo "ERROR: No firmware binary found in bin/targets/ramips/rt305x/"
+            exit 1
+          fi
+          
+          echo "=== Package outputs created successfully ==="
           ls -lh output/
 
       - name: Upload Firmware Artifacts
