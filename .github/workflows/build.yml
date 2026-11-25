@@ -35,44 +35,13 @@ jobs:
 
       - name: Register PHANTOM-77 Device Tree & Board Definition
         run: |
-          # 1. Copy Device Tree
-          mkdir -p openwrt/target/linux/ramips/dts/rt305x/
-          cp phantom-77.dts openwrt/target/linux/ramips/dts/rt305x/phantom-77.dts || true
-          cp phantom-77.dts openwrt/target/linux/ramips/dts/phantom-77.dts || true
-
-          # 2. Append Device definition to rt305x.mk
-          cat << 'EOF' >> openwrt/target/linux/ramips/image/rt305x.mk
-
-define Device/phantom-77
-  SOC := rt5350
-  IMAGE_SIZE := 3776k
-  DEVICE_VENDOR := PHANTOM
-  DEVICE_MODEL := 77
-  DEVICE_PACKAGES := kmod-rt2800-soc
-endef
-TARGET_DEVICES += phantom-77
-EOF
+          chmod +x scripts/register-board.sh
+          ./scripts/register-board.sh
 
       - name: Configure Minimalist Linux (.config)
         run: |
+          cp phantom-77.config openwrt/.config
           cd openwrt
-          cat << 'EOF' > .config
-          CONFIG_TARGET_ramips=y
-          CONFIG_TARGET_ramips_rt305x=y
-          CONFIG_TARGET_ramips_rt305x_DEVICE_phantom-77=y
-          CONFIG_TARGET_BOARD="ramips"
-          CONFIG_TARGET_SUBTARGET="rt305x"
-          CONFIG_TARGET_PROFILE="DEVICE_phantom-77"
-          # Pure Minimalist Linux (No LuCI/PPP bloat) to fit in 4MB
-          # CONFIG_PACKAGE_luci is not set
-          # CONFIG_PACKAGE_ppp is not set
-          # CONFIG_PACKAGE_ppp-mod-pppoe is not set
-          # CONFIG_PACKAGE_kmod-ppp is not set
-          # CONFIG_PACKAGE_kmod-pppoe is not set
-          # CONFIG_PACKAGE_ip6tables is not set
-          # CONFIG_PACKAGE_odhcp6c is not set
-          # CONFIG_IPV6 is not set
-          EOF
           make defconfig
 
       - name: Inject Custom Configurations & Branding (files/)
